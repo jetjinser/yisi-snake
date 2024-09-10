@@ -115,6 +115,9 @@ class Procedure extends HeapObject {
     call(...arg) {
         return this.reflector.call(this, ...arg);
     }
+    async call_async(...arg) {
+        return await this.reflector.call_async(this, ...arg);
+    }
 }
 
 class Sym extends HeapObject {
@@ -138,7 +141,7 @@ class Port extends HeapObject { toString() { return "#<port>"; } }
 class Struct extends HeapObject { toString() { return "#<struct>"; } }
 
 function instantiate_streaming(path, imports) {
-    if (typeof fetch !== 'undefined')
+    if (typeof fetch !== 'undefined' && typeof window !== 'undefined')
         return WebAssembly.instantiateStreaming(fetch(path), imports);
     let bytes;
     if (typeof read !== 'undefined') {
@@ -152,6 +155,51 @@ function instantiate_streaming(path, imports) {
     return WebAssembly.instantiate(bytes, imports);
 }
 
+class IterableWeakSet {
+    #array;
+    #set;
+    constructor() { this.#array = []; this.#set = new WeakSet; }
+    #kill(i) {
+        let tail = this.#array.pop();
+        if (i < this.#array.length)
+            this.#array[i] = tail;
+    }
+    #get(i) {
+        if (i >= this.#array.length)
+            return null;
+        let obj = this.#array[i].deref();
+        if (obj)
+            return obj;
+        this.#kill(i);
+        return null;
+    }
+    #cleanup() {
+        let i = 0;
+        while (this.#get(i)) i++;
+    }
+    has(x) { return this.#set.has(x); }
+    add(x) {
+        if (this.has(x))
+            return;
+        if (this.#array.length % 32 == 0)
+            this.#cleanup();
+        this.#set.add(x);
+        this.#array.push(new WeakRef(x));
+    }
+    delete(x) {
+        if (!this.has(x))
+            return;
+        this.#set.delete(x);
+        let i = 0;
+        while (this.#get(i) != x) i++;
+        this.#kill(i);
+    }
+    *[Symbol.iterator]() {
+        for (let i = 0, x; x = this.#get(i); i++)
+            yield x;
+    }
+}
+
 class Scheme {
     #instance;
     #abi;
@@ -160,24 +208,24 @@ class Scheme {
         this.#abi = abi;
     }
 
-    static async reflect(abi) {
+    static async reflect(abi, {reflect_wasm_dir = '.'}) {
         let debug = {
             debug_str(x) { console.log(`reflect debug: ${x}`); },
             debug_str_i32(x, y) { console.log(`reflect debug: ${x}: ${y}`); },
             debug_str_scm: (x, y) => {
                 console.log(`reflect debug: ${x}: #<scm>`);
             },
+            code_source(x) { return ['???', 0, 0]; }
+        };
+        let reflect_wasm = reflect_wasm_dir + '/reflect.wasm';
+        let rt = {
+            quit(status) { throw new SchemeQuitError(status); },
+            die(tag, data) { throw new SchemeTrapError(tag, data); },
+            wtf8_to_string(wtf8) { return wtf8_to_string(wtf8); },
+            string_to_wtf8(str) { return string_to_wtf8(str); },
         };
         let { module, instance } =
-            await instantiate_streaming('js-runtime/reflect.wasm', {
-              abi,
-              debug,
-              rt: {
-                  die(tag, data) { throw new SchemeTrapError(tag, data); },
-                  wtf8_to_string(wtf8) { return wtf8_to_string(wtf8); },
-                  string_to_wtf8(str) { return string_to_wtf8(str); },
-              }
-            });
+            await instantiate_streaming(reflect_wasm, { abi, debug, rt });
         return new Scheme(instance, abi);
     }
 
@@ -200,13 +248,14 @@ class Scheme {
         let proc = new Procedure(this, mod.get_export('$load').value);
         return proc.call();
     }
-    static async load_main(path, abi, user_imports = {}) {
-        let mod = await SchemeModule.fetch_and_instantiate(path, abi, user_imports);
-        let reflect = await mod.reflect();
+    static async load_main(path, opts = {}) {
+        let mod = await SchemeModule.fetch_and_instantiate(path, opts);
+        let reflect = await mod.reflect(opts);
         return reflect.#init_module(mod);
     }
-    async load_extension(path, user_imports = {}) {
-        let mod = await SchemeModule.fetch_and_instantiate(path, this.#abi, user_imports);
+    async load_extension(path, opts = {}) {
+        opts = Object.assign({ abi: this.#abi }, opts);
+        let mod = await SchemeModule.fetch_and_instantiate(path, opts);
         return this.#init_module(mod);
     }
 
@@ -235,6 +284,8 @@ class Scheme {
                                              this.#to_scm(js.denom));
             if (js instanceof Complex)
                 return api.scm_from_complex(js.real, js.imag);
+            return api.scm_from_extern(js);
+        } else if (typeof(js) == 'function') {
             return api.scm_from_extern(js);
         } else {
             throw new Error(`unexpected; ${typeof(js)}`);
@@ -301,6 +352,15 @@ class Scheme {
         return results;
     }
 
+    call_async(func, ...args) {
+        return new Promise((resolve, reject) => {
+            this.call(func,
+                      val => resolve(this.#to_js(val)),
+                      err => reject(this.#to_js(err)),
+                      ...args);
+        })
+    }
+
     car(x) { return this.#to_js(this.#instance.exports.car(x.obj)); }
     cdr(x) { return this.#to_js(this.#instance.exports.cdr(x.obj)); }
 
@@ -335,6 +395,11 @@ class SchemeTrapError extends Error {
     toString() { return `SchemeTrap(${this.tag}, <data>)`; }
 }
 
+class SchemeQuitError extends Error {
+    constructor(status) { super(); this.status = status; }
+    toString() { return `SchemeQuit(status=${this.status})`; }
+}
+
 function string_repr(str) {
     // FIXME: Improve to match Scheme.
     return '"' + str.replace(/(["\\])/g, '\\$1').replace(/\n/g, '\\n') + '"';
@@ -351,6 +416,13 @@ function flonum_to_string(f64) {
     } else {
         return f64 < 0 ? '-inf.0' : '+inf.0';
     }
+}
+
+let async_invoke = typeof queueMicrotask !== 'undefined'
+    ? queueMicrotask
+    : thunk => setTimeout(thunk, 0);
+function async_invoke_later(thunk, jiffies) {
+    setTimeout(thunk, jiffies / 1000);
 }
 
 let wtf8_helper;
@@ -388,10 +460,23 @@ function string_to_wtf8(str) {
     return finish_builder(builder);
 }
 
-async function load_wtf8_helper_module() {
+async function load_wtf8_helper_module(reflect_wasm_dir = '') {
     if (wtf8_helper) return;
-    let { module, instance } = await instantiate_streaming("js-runtime/wtf8.wasm");
+    let wtf8_wasm = reflect_wasm_dir + "/wtf8.wasm";
+    let { module, instance } = await instantiate_streaming(wtf8_wasm);
     wtf8_helper = instance;
+}
+
+function make_textual_writable_stream(write_chars) {
+    const decoder = new TextDecoder("utf-8");
+    return new WritableStream({
+        write(chunk) {
+            return new Promise((resolve, reject) => {
+                write_chars(decoder.decode(chunk, { stream: true }));
+                resolve();
+            });
+        }
+    });
 }
 
 class SchemeModule {
@@ -448,16 +533,12 @@ class SchemeModule {
         bignum_logand(a, b) { return BigInt(a) & BigInt(b); },
         bignum_logior(a, b) { return BigInt(a) | BigInt(b); },
         bignum_logxor(a, b) { return BigInt(a) ^ BigInt(b); },
-        bignum_logsub(a, b) { return BigInt(a) & (~ BigInt(b)); },
 
         bignum_lt(a, b) { return a < b; },
         bignum_le(a, b) { return a <= b; },
         bignum_eq(a, b) { return a == b; },
 
         bignum_to_f64(n) { return Number(n); },
-
-        f64_is_nan(n) { return Number.isNaN(n); },
-        f64_is_infinite(n) { return !Number.isFinite(n); },
 
         flonum_to_string,
 
@@ -487,16 +568,91 @@ class SchemeModule {
         current_jiffy() { return performance.now() * 1000; },
         current_second() { return Date.now() / 1000; },
 
+        async_invoke,
+        async_invoke_later,
+        promise_on_completed(p, kt, kf) {
+            p.then((val) => {
+                if (val === undefined) {
+                    kt(false);
+                } else {
+                    kt(val);
+                }
+            }, kf);
+        },
+        promise_complete(callback, val) { callback(val); },
+
         // Wrap in functions to allow for lazy loading of the wtf8
         // module.
         wtf8_to_string(wtf8) { return wtf8_to_string(wtf8); },
         string_to_wtf8(str) { return string_to_wtf8(str); },
 
-        die(tag, data) { throw new SchemeTrapError(tag, data); }
+        make_regexp(pattern, flags) { return new RegExp(pattern, flags); },
+        regexp_exec(re, str) { return re.exec(str); },
+        regexp_match_string(m) { return m.input; },
+        regexp_match_start(m) { return m.index; },
+        regexp_match_end(m) { return m.index + m[0].length; },
+        regexp_match_count(m) { return m.length; },
+        regexp_match_substring(m, i) {
+            const str = m[i];
+            if (str === undefined) {
+                return null;
+            }
+            return str;
+        },
+
+        die(tag, data) { throw new SchemeTrapError(tag, data); },
+        quit(status) { throw new SchemeQuitError(status); },
+
+        stream_make_chunk(len) { return new Uint8Array(len); },
+        stream_chunk_length(chunk) { return chunk.length; },
+        stream_chunk_ref(chunk, idx) { return chunk[idx]; },
+        stream_chunk_set(chunk, idx, val) { chunk[idx] = val; },
+        stream_get_reader(stream) { return stream.getReader(); },
+        stream_read(reader) { return reader.read(); },
+        stream_result_chunk(result) { return result.value; },
+        stream_result_done(result) { return result.done ? 1 : 0; },
+        stream_get_writer(stream) { return stream.getWriter(); },
+        stream_write(writer, chunk) { return writer.write(chunk); },
+        stream_close_writer(writer) { return writer.close(); },
     };
 
+    static #code_origins = new WeakMap;
+    static #all_modules = new IterableWeakSet;
+    static #code_origin(code) {
+        if (SchemeModule.#code_origins.has(code))
+            return SchemeModule.#code_origins.get(code);
+        for (let mod of SchemeModule.#all_modules) {
+            for (let i = 0, x = null; x = mod.instance_code(i); i++) {
+                let origin = [mod, i];
+                if (!SchemeModule.#code_origins.has(x))
+                    SchemeModule.#code_origins.set(x, origin);
+                if (x === code)
+                    return origin;
+            }
+        }
+        return [null, 0];
+    }
+
+    static #code_name(code) {
+        let [mod, idx] = SchemeModule.#code_origin(code);
+        if (mod)
+            return mod.instance_code_name(idx);
+        return null;
+    }
+
+    static #code_source(code) {
+        let [mod, idx] = SchemeModule.#code_origin(code);
+        if (mod)
+            return mod.instance_code_source(idx);
+        return [null, 0, 0];
+    }
+
     constructor(instance) {
+        SchemeModule.#all_modules.add(this);
         this.#instance = instance;
+        let open_file_error = (filename) => {
+            throw new Error('No file system access');
+        };
         if (typeof printErr === 'function') { // v8/sm dev console
             // On the console, try to use 'write' (v8) or 'putstr' (sm),
             // as these don't add an extraneous newline.  Unfortunately
@@ -515,14 +671,13 @@ class SchemeModule {
                         return '\n';
                     }
                 }: () => '';
-            let delete_file = (filename) => false;
             this.#io_handler = {
                 write_stdout: write_no_newline,
                 write_stderr: printErr,
                 read_stdin,
                 file_exists: (filename) => false,
-                open_input_file: (filename) => {},
-                open_output_file: (filename) => {},
+                open_input_file: open_file_error,
+                open_output_file: open_file_error,
                 close_file: () => undefined,
                 read_file: (handle, length) => 0,
                 write_file: (handle, length) => 0,
@@ -531,7 +686,11 @@ class SchemeModule {
                 file_buffer_size: (handle) => 0,
                 file_buffer_ref: (handle, i) => 0,
                 file_buffer_set: (handle, i, x) => undefined,
-                delete_file: (filename) => undefined
+                delete_file: (filename) => undefined,
+                // FIXME: We should polyfill these out.
+                stream_stdin() { throw new Error('stream_stdin not implemented'); },
+                stream_stdout() { throw new Error('stream_stderr not implemented'); },
+                stream_stderr() { throw new Error('stream_stderr not implemented'); },
             };
         } else if (typeof window !== 'undefined') { // web browser
             this.#io_handler = {
@@ -539,8 +698,8 @@ class SchemeModule {
                 write_stderr: console.error,
                 read_stdin: () => '',
                 file_exists: (filename) => false,
-                open_input_file: (filename) => {},
-                open_output_file: (filename) => {},
+                open_input_file: open_file_error,
+                open_output_file: open_file_error,
                 close_file: () => undefined,
                 read_file: (handle, length) => 0,
                 write_file: (handle, length) => 0,
@@ -549,17 +708,26 @@ class SchemeModule {
                 file_buffer_size: (handle) => 0,
                 file_buffer_ref: (handle, i) => 0,
                 file_buffer_set: (handle, i, x) => undefined,
-                delete_file: (filename) => undefined
+                delete_file: (filename) => undefined,
+                stream_stdin() { return new ReadableStream; },
+                stream_stdout() {
+                    return make_textual_writable_stream(s => console.log(s));
+                },
+                stream_stderr() {
+                    return make_textual_writable_stream(s => console.error(s));
+	        },
             };
         } else { // nodejs
             const fs = require('fs');
             const process = require('process');
+            const { ReadableStream, WritableStream } = require('node:stream/web');
+
             const bufLength = 1024;
             const stdinBuf = Buffer.alloc(bufLength);
             const SEEK_SET = 0, SEEK_CUR = 1, SEEK_END = 2;
             this.#io_handler = {
-                write_stdout: console.log,
-                write_stderr: console.error,
+                write_stdout: process.stdout.write.bind(process.stdout),
+                write_stderr: process.stderr.write.bind(process.stderr),
                 read_stdin: () => {
                     let n = fs.readSync(process.stdin.fd, stdinBuf, 0, stdinBuf.length);
                     return stdinBuf.toString('utf8', 0, n);
@@ -620,7 +788,23 @@ class SchemeModule {
                 file_buffer_set: (handle, i, x) => {
                     handle.buf[i] = x;
                 },
-                delete_file: fs.rmSync.bind(fs)
+                delete_file: fs.rmSync.bind(fs),
+                stream_stdin() {
+                    return new ReadableStream({
+                        async start(controller) {
+                            for await (const chunk of process.stdin) {
+                                controller.enqueue(chunk);
+                            }
+                            controller.close();
+                        }
+                    });
+                },
+                stream_stdout() {
+                    return make_textual_writable_stream(s => process.stdout.write(s));
+                },
+                stream_stderr() {
+                    return make_textual_writable_stream(s => process.stderr.write(s));
+	        },
             };
         }
         this.#debug_handler = {
@@ -629,8 +813,9 @@ class SchemeModule {
             debug_str_scm(x, y) { console.log(`debug: ${x}: #<scm>`); },
         };
     }
-    static async fetch_and_instantiate(path, imported_abi, user_imports = {}) {
-        await load_wtf8_helper_module();
+    static async fetch_and_instantiate(path, { abi, reflect_wasm_dir = '.',
+                                               user_imports = {} }) {
+        await load_wtf8_helper_module(reflect_wasm_dir);
         let io = {
             write_stdout(str) { mod.#io_handler.write_stdout(str); },
             write_stderr(str) { mod.#io_handler.write_stderr(str); },
@@ -646,12 +831,17 @@ class SchemeModule {
             file_buffer_size(handle) { return mod.#io_handler.file_buffer_size(handle); },
             file_buffer_ref(handle, i) { return mod.#io_handler.file_buffer_ref(handle, i); },
             file_buffer_set(handle, i, x) { return mod.#io_handler.file_buffer_set(handle, i, x); },
-            delete_file(filename) { mod.#io_handler.delete_file(filename); }
+            delete_file(filename) { mod.#io_handler.delete_file(filename); },
+            stream_stdin() { return mod.#io_handler.stream_stdin(); },
+            stream_stdout() { return mod.#io_handler.stream_stdout(); },
+            stream_stderr() { return mod.#io_handler.stream_stderr(); },
         };
         let debug = {
             debug_str(x) { mod.#debug_handler.debug_str(x); },
             debug_str_i32(x, y) { mod.#debug_handler.debug_str_i32(x, y); },
             debug_str_scm(x, y) { mod.#debug_handler.debug_str_scm(x, y); },
+            code_name(code) { return SchemeModule.#code_name(code); },
+            code_source(code) { return SchemeModule.#code_source(code); },
         }
         let ffi = {
             procedure_to_extern(proc) {
@@ -660,8 +850,7 @@ class SchemeModule {
         };
         let imports = {
           rt: SchemeModule.#rt,
-          abi: imported_abi,
-          debug, io, ffi, ...user_imports
+          abi, debug, io, ffi, ...user_imports
         };
         let { module, instance } = await instantiate_streaming(path, imports);
         let mod = new SchemeModule(instance);
@@ -692,8 +881,26 @@ class SchemeModule {
             return this.all_exports()[name];
         throw new Error(`unknown export: ${name}`)
     }
-    async reflect() {
-        return await Scheme.reflect(this.exported_abi());
+    instance_code(idx) {
+        if ('%instance-code' in this.all_exports()) {
+            return this.all_exports()['%instance-code'](idx);
+        }
+        return null;
+    }
+    instance_code_name(idx) {
+        if ('%instance-code-name' in this.all_exports()) {
+            return this.all_exports()['%instance-code-name'](idx);
+        }
+        return null;
+    }
+    instance_code_source(idx) {
+        if ('%instance-code-source' in this.all_exports()) {
+            return this.all_exports()['%instance-code-source'](idx);
+        }
+        return [null, 0, 0];
+    }
+    async reflect(opts = {}) {
+        return await Scheme.reflect(this.exported_abi(), opts);
     }
 }
 
@@ -707,4 +914,11 @@ function repr(obj) {
     if (typeof obj === 'string')
         return string_repr(obj);
     return obj + '';
+}
+
+// Modulize when possible.
+if (typeof exports !== 'undefined') {
+    exports.Scheme = Scheme;
+    exports.SchemeQuitError = SchemeQuitError;
+    exports.repr = repr;
 }

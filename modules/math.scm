@@ -18,21 +18,6 @@
 ;;;
 ;;; Code:
 
-;; (library (math)
-;;   (export random
-;;           clamp)
-;;   (import (scheme base)
-;;           (hoot ffi))
-
-;;   (define-foreign random
-;;     "math" "random"
-;;     -> f64)
-
-;;   (define (clamp x min max)
-;;     (cond ((< x min) min)
-;;           ((> x max) max)
-;;           (else x))))
-
 (define-module (math)
   #:pure
   #:use-module (scheme base)

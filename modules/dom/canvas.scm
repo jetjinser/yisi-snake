@@ -19,8 +19,6 @@
 ;;; Code:
 
 (define-module (dom canvas)
-  #:pure
-  #:use-module (scheme base)
   #:use-module (hoot ffi)
   #:export (get-context
             set-fill-color!

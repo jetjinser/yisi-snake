@@ -18,37 +18,35 @@
 ;;;
 ;;; Code:
 
-(library (dom media)
-  (export make-audio
-          media-play
-          media-pause
-          media-volume
-          set-media-volume!
-          set-media-loop!
-          media-seek)
-  (import (scheme base)
-          (hoot ffi)
-          (hoot match)
-          (only (hoot syntax) define*))
+(define-module (dom media)
+  #:use-module (hoot ffi)
+  #:use-module (ice-9 match)
+  #:export (make-audio
+            media-play
+            media-pause
+            media-volume
+            set-media-volume!
+            set-media-loop!
+            media-seek))
 
-  (define-foreign make-audio
-    "media" "newAudio"
-    (ref string) -> (ref extern))
-  (define-foreign media-play
-    "media" "play"
-    (ref extern) -> none)
-  (define-foreign media-pause
-    "media" "pause"
-    (ref extern) -> none)
-  (define-foreign media-volume
-    "media" "volume"
-    (ref extern) -> f64)
-  (define-foreign set-media-volume!
-    "media" "setVolume"
-    (ref extern) f64 -> none)
-  (define-foreign set-media-loop!
-    "media" "setLoop"
-    (ref extern) i32 -> none)
-  (define-foreign media-seek
-    "media" "seek"
-    (ref extern) f64 -> none))
+(define-foreign make-audio
+  "media" "newAudio"
+  (ref string) -> (ref extern))
+(define-foreign media-play
+  "media" "play"
+  (ref extern) -> none)
+(define-foreign media-pause
+  "media" "pause"
+  (ref extern) -> none)
+(define-foreign media-volume
+  "media" "volume"
+  (ref extern) -> f64)
+(define-foreign set-media-volume!
+  "media" "setVolume"
+  (ref extern) f64 -> none)
+(define-foreign set-media-loop!
+  "media" "setLoop"
+  (ref extern) i32 -> none)
+(define-foreign media-seek
+  "media" "seek"
+  (ref extern) f64 -> none)

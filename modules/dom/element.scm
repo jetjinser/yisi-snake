@@ -19,8 +19,6 @@
 ;;; Code:
 
 (define-module (dom element)
-  #:pure
-  #:use-module (scheme base)
   #:use-module (hoot ffi)
   #:export (element-value
             set-element-value!

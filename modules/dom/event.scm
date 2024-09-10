@@ -19,8 +19,6 @@
 ;;; Code:
 
 (define-module (dom event)
-  #:pure
-  #:use-module (scheme base)
   #:use-module (hoot ffi)
   #:export (add-event-listener!
             remove-event-listener!

@@ -19,8 +19,6 @@
 ;;; Code:
 
 (define-module (dom document)
-  #:pure
-  #:use-module (scheme base)
   #:use-module (hoot ffi)
   #:export (current-document
             document-body

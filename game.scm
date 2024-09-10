@@ -18,22 +18,20 @@
 ;;;
 ;;; Code:
 
-(import (scheme base)
-        (scheme inexact)
-        (hoot debug)
-        (hoot ffi)
-        (hoot hashtables)
-        (hoot match)
-        (dom canvas)
-        (dom document)
-        (dom element)
-        (dom event)
-        (dom image)
-        (dom media)
-        (dom window)
-        (math)
-        (math rect)
-        (math vector))
+(use-modules (dom canvas)
+             (dom document)
+             (dom element)
+             (dom event)
+             (dom image)
+             (dom media)
+             (dom window)
+             (hoot ffi)
+             (hoot hashtables)
+             (ice-9 match)
+             (math)
+             (math rect)
+             (math vector)
+             (srfi srfi-9))
 
 ;; Data types
 (define-record-type <brick-type>
@@ -346,8 +344,8 @@
 ;; Canvas and event loop setup
 (define canvas (get-element-by-id "canvas"))
 (define context (get-context canvas "2d"))
-(set-element-width! canvas (exact game-width))
-(set-element-height! canvas (exact game-height))
+(set-element-width! canvas (inexact->exact game-width))
+(set-element-height! canvas (inexact->exact game-height))
 (add-event-listener! (current-document) "keydown"
                      (procedure->external on-key-down))
 (add-event-listener! (current-document) "keyup"

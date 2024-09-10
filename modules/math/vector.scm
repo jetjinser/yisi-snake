@@ -19,20 +19,16 @@
 ;;; Code:
 
 (define-module (math vector)
-  #:pure
-  #:use-module (scheme base)
-  #:use-module (scheme inexact)
-  #:use-module ((hoot bytevectors)
-                #:select
-                (bytevector-ieee-double-native-ref
-                 bytevector-ieee-double-native-set!))
   #:use-module (math)
+  #:use-module (rnrs bytevectors)
+  #:use-module (srfi srfi-9)
   #:export (vec2
             vec2?
             vec2-x
             vec2-y
             set-vec2-x!
             set-vec2-y!
+            with-vec2
             vec2-add!
             vec2-sub!
             vec2-mul-scalar!

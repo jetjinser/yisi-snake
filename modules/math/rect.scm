@@ -19,12 +19,8 @@
 ;;; Code:
 
 (define-module (math rect)
-  #:pure
-  #:use-module (scheme base)
-  #:use-module ((hoot bytevectors)
-                #:select
-                (bytevector-ieee-double-native-ref
-                 bytevector-ieee-double-native-set!))
+  #:use-module (rnrs bytevectors)
+  #:use-module (srfi srfi-9)
   #:export (make-rect
             rect?
             rect-x

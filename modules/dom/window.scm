@@ -19,8 +19,6 @@
 ;;; Code:
 
 (define-module (dom window)
-  #:pure
-  #:use-module (scheme base)
   #:use-module (hoot ffi)
   #:export (current-window
             window-inner-width

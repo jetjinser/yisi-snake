@@ -19,8 +19,6 @@
 ;;; Code:
 
 (define-module (dom image)
-  #:pure
-  #:use-module (scheme base)
   #:use-module (hoot ffi)
   #:export (make-image))
 
