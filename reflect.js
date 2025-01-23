@@ -5,6 +5,8 @@ class Char {
     }
     toString() {
         let ch = String.fromCodePoint(this.codepoint);
+        if (ch == '\n') return '#\\newline';
+        if (ch == '\r') return '#\\return';
         if (ch.match(/[a-zA-Z0-9$[\]().]/)) return `#\\${ch}`;
         return `#\\x${this.codepoint.toString(16)}`;
     }
@@ -137,6 +139,7 @@ class WeakTable extends HeapObject { toString() { return "#<weak-table>"; } }
 class Fluid extends HeapObject { toString() { return "#<fluid>"; } }
 class DynamicState extends HeapObject { toString() { return "#<dynamic-state>"; } }
 class Syntax extends HeapObject { toString() { return "#<syntax>"; } }
+class SyntaxTransformer extends HeapObject { toString() { return "#<syntax-transformer>"; } }
 class Port extends HeapObject { toString() { return "#<port>"; } }
 class Struct extends HeapObject { toString() { return "#<struct>"; } }
 
@@ -245,6 +248,22 @@ class Scheme {
                 };
             }
         });
+        mod.set_finalization_handler({
+            make_finalization_registry: (f) => new FinalizationRegistry(f),
+            finalization_registry_register: (registry, target, heldValue) => {
+                // heldValue is a Wasm struct and needs to be wrapped
+                // so that when it goes back to Scheme via the
+                // finalizer callback it is seen as a Scheme value and
+                // not an external one.
+                registry.register(target, this.#to_js(heldValue));
+            },
+            finalization_registry_register_with_token: (registry, target, heldValue, unregisterToken) => {
+                registry.register(target, this.#to_js(heldValue), unregisterToken);
+            },
+            finalization_registry_unregister: (registry, unregisterToken) => {
+                return registry.unregister(unregisterToken);
+            }
+        });
         let proc = new Procedure(this, mod.get_export('$load').value);
         return proc.call();
     }
@@ -330,6 +349,7 @@ class Scheme {
             fluid: () => new Fluid(this, scm),
             'dynamic-state': () => new DynamicState(this, scm),
             syntax: () => new Syntax(this, scm),
+            'syntax-transformer': () => new SyntaxTransformer(this, scm),
             port: () => new Port(this, scm),
             struct: () => new Struct(this, scm),
             'extern-ref': () => api.extern_value(scm)
@@ -484,6 +504,7 @@ class SchemeModule {
     #io_handler;
     #debug_handler;
     #ffi_handler;
+    #finalization_handler;
     static #rt = {
         bignum_from_string(str) { return BigInt(str); },
         bignum_from_i32(n) { return BigInt(n); },
@@ -544,6 +565,12 @@ class SchemeModule {
 
         string_upcase: Function.call.bind(String.prototype.toUpperCase),
         string_downcase: Function.call.bind(String.prototype.toLowerCase),
+
+        make_weak_ref(x) { return new WeakRef(x); },
+        weak_ref_deref(ref, fail) {
+            const val = ref.deref();
+            return val === undefined ? fail: val;
+        },
 
         make_weak_map() { return new WeakMap; },
         weak_map_get(map, k, fail) {
@@ -848,9 +875,23 @@ class SchemeModule {
                 return mod.#ffi_handler.procedure_to_extern(proc);
             }
         };
+        let finalization = {
+            make_finalization_registry(f) {
+                return mod.#finalization_handler.make_finalization_registry(f);
+            },
+            finalization_registry_register(registry, target, heldValue) {
+                mod.#finalization_handler.finalization_registry_register(registry, target, heldValue);
+            },
+            finalization_registry_register_with_token(registry, target, heldValue, unregisterToken) {
+                mod.#finalization_handler.finalization_registry_register_with_token(registry, target, heldValue, unregisterToken);
+            },
+            finalization_registry_unregister(registry, unregisterToken) {
+                return mod.#finalization_handler.finalization_registry_unregister(registry, unregisterToken);
+            }
+        };
         let imports = {
           rt: SchemeModule.#rt,
-          abi, debug, io, ffi, ...user_imports
+          abi, debug, io, ffi, finalization, ...user_imports
         };
         let { module, instance } = await instantiate_streaming(path, imports);
         let mod = new SchemeModule(instance);
@@ -859,6 +900,7 @@ class SchemeModule {
     set_io_handler(h) { this.#io_handler = h; }
     set_debug_handler(h) { this.#debug_handler = h; }
     set_ffi_handler(h) { this.#ffi_handler = h; }
+    set_finalization_handler(h) { this.#finalization_handler = h; }
     all_exports() { return this.#instance.exports; }
     exported_abi() {
         let abi = {}
