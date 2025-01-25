@@ -70,8 +70,8 @@ window.addEventListener("load", async () => {
         }
       }
     });
-  } catch(e) {
-    if(e instanceof WebAssembly.CompileError) {
+  } catch (e) {
+    if (e instanceof WebAssembly.CompileError) {
       document.getElementById("wasm-error").hidden = false;
     }
     throw e;
