@@ -23,7 +23,9 @@
             nodePackages.typescript-language-server
             vscode-langservers-extracted
             guile
-            guile-hoot
+            (guile-hoot.overrideAttrs (_: {
+              src = ~/vie/dump/guile-hoot;
+            }))
             gnumake
             zip
           ];
