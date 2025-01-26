@@ -24,13 +24,15 @@
             set-fill-color!
             set-font!
             set-text-align!
+            set-text-baseline!
             clear-rect
             fill-rect
             fill-text
             draw-image
             set-scale!
             set-transform!
-            set-image-smoothing-enabled!))
+            set-image-smoothing-enabled!
+            draw-line!))
 
 ;; HTMLCanvasElement
 (define-foreign get-context
@@ -46,6 +48,9 @@
   (ref extern) (ref string) -> none)
 (define-foreign set-text-align!
   "canvas" "setTextAlign"
+  (ref extern) (ref string) -> none)
+(define-foreign set-text-baseline!
+  "canvas" "setTextBaseline"
   (ref extern) (ref string) -> none)
 (define-foreign clear-rect
   "canvas" "clearRect"
@@ -68,3 +73,6 @@
 (define-foreign set-image-smoothing-enabled!
   "canvas" "setImageSmoothingEnabled"
   (ref extern) i32 -> none)
+(define-foreign draw-line!
+  "canvas" "drawLine"
+  (ref extern) f64 f64 f64 f64 -> none)

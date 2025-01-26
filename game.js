@@ -57,13 +57,20 @@ window.addEventListener("load", async () => {
           setFillColor: (ctx, color) => ctx.fillStyle = color,
           setFont: (ctx, font) => ctx.font = font,
           setTextAlign: (ctx, align) => ctx.textAlign = align,
+          setTextBaseline: (ctx, baseline) => ctx.textBaseline = baseline,
           clearRect: (ctx, x, y, w, h) => ctx.clearRect(x, y, w, h),
           fillRect: (ctx, x, y, w, h) => ctx.fillRect(x, y, w, h),
           fillText: (ctx, text, x, y) => ctx.fillText(text, x, y),
           drawImage: (ctx, image, sx, sy, sw, sh, dx, dy, dw, dh) => ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh),
           setScale: (ctx, sx, sy) => ctx.scale(sx, sy),
           setTransform: (ctx, a, b, c, d, e, f) => ctx.setTransform(a, b, c, d, e, f),
-          setImageSmoothingEnabled: (ctx, enabled) => ctx.imageSmoothingEnabled = (enabled == 1)
+          setImageSmoothingEnabled: (ctx, enabled) => ctx.imageSmoothingEnabled = (enabled == 1),
+          drawLine: (ctx, sx, sy, dx, dy) => {
+            ctx.beginPath()
+            ctx.moveTo(sx, sy)
+            ctx.lineTo(dx, dy)
+            ctx.stroke()
+          }
         },
         math: {
           random: () => Math.random()

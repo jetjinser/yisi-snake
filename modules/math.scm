@@ -29,6 +29,6 @@
   -> f64)
 
 (define (clamp x min max)
-  (cond ((< x min) min)
-        ((> x max) max)
-        (else x)))
+  (cond [(< x min) min]
+        [(> x max) max]
+        [else x]))
