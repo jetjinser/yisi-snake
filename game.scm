@@ -19,7 +19,6 @@
 ;;; Code:
 
 ;; TODO: 
-;; - lose (collision)
 ;; - score
 ;; - keyborad sequence
 ;; - audio
@@ -79,26 +78,25 @@
   (score world-score))
 
 (define (make-world-1)
-  (make-world 'play
-              (make-food "🐭" (make-position 1 24))
-              (make-snake (make-position 16 10)
-                          "🐍"
-                          (make-q)
-                          "🟢"
-                          'right
-                          0)
-              0))
-
-;; Game state
-(define *world*
-  (let* ([world (make-world-1)])
+  (let ([world (make-world 'play
+                           (make-food "🐭" (make-position 10 10))
+                           (make-snake (make-position 5 10)
+                                       "🐍"
+                                       (make-q)
+                                       "🟢"
+                                       'left
+                                       0)
+                           0)])
     (for-each (λ (pos) (enq! (snake-tails (world-snake world)) pos))
-              (reverse (list (make-position 16 9) (make-position 16 8) (make-position 15 8) (make-position 14 8))))
+              (reverse (list (make-position 6 10) (make-position 7 10) (make-position 8 10))))
     world))
 
+;; Game state
+(define *world* (make-world-1))
+
 ;; Game data
-(define game-size     800.0)
-(define line-count    25)
+(define game-size     600.0)
+(define line-count    15)
 (define grid-count    (- line-count 1))
 (define grid-size     (/ game-size line-count))
 ; (define snake-velocity 2)
@@ -138,21 +136,29 @@
      (set-snake-growth-potential! snake (- growth-potential 1)))
    (move-node! direction head 1)))
 
-(define (spawn-food! snake)
-  (let* ([pos-x (round (* (random) grid-count))]
-         [pos-y (round (* (random) grid-count))]
-         [pos (make-position pos-x pos-y)])
+(define (gen-pos)
+  (let ([pos-x (round (* (random) grid-count))]
+        [pos-y (round (* (random) grid-count))])
+    (make-position pos-x pos-y)))
+
+(define (spawn-food snake)
+  (let ([pos (gen-pos)])
     (if (any1 (λ (p) (position= p pos))
               (snake-from-head snake))
-      (spawn-food! snake)
+      (spawn-food snake)
       pos)))
 
 (define (eat-and-spawn-food! snake food)
   (and (position= (snake-head snake) (food-position food))
-       (set-food-position! food (spawn-food! snake))))
+       (set-food-position! food (spawn-food snake))))
 
 (define (grow-snake! snake)
   (set-snake-growth-potential! snake (+ (snake-growth-potential snake) 1)))
+
+(define (snake-collision snake)
+  (let ([head (snake-head snake)]
+        [tails (car (snake-tails snake))])
+    (any (λ (pos) (position= pos head)) tails)))
 
 (define dt (/ 1000.0 hz))
 (define (update)
@@ -162,7 +168,9 @@
            [food (world-food *world*)])
        (move-snake! snake)
        (and (eat-and-spawn-food! snake food)
-            (grow-snake! snake)))]
+            (grow-snake! snake))
+       (and (snake-collision snake)
+            (set-world-state! *world* 'ready)))]
     [_ #t])
   (timeout update-callback dt))
 (define update-callback (procedure->external update))
@@ -193,7 +201,14 @@
     (for-each (lambda (tail-pos)
                 (let ([pos (absolute-pos tail-pos)])
                   (fill-text context tail-icon (position-x pos) (position-y pos))))
-              (car tails)))
+              (car tails))
+    ;; draw message
+    (match (world-state *world*)
+      ['ready
+       (set-fill-color! context "#ffffff")
+       (fill-text context "Crashed! Enter to play..."
+                   (/ game-size 2.0) (/ game-size 2.0))]
+      [_ #t]))
   (request-animation-frame draw-callback))
 (define draw-callback (procedure->external draw))
 
