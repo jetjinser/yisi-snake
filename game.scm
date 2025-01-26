@@ -18,6 +18,11 @@
 ;;;
 ;;; Code:
 
+;; TODO: 
+;; - lose
+;; - score
+;; - grow
+
 (use-modules (dom canvas)
              (dom document)
              (dom element)
@@ -32,13 +37,18 @@
              (math)
              (math rect)
              (math vector)
-             (srfi srfi-9))
+             (srfi srfi-9)
+             (srfi srfi-1))
 
 (define-record-type <position>
   (make-position x y)
   position?
   (x position-x set-position-x!)
   (y position-y set-position-y!))
+
+(define (position= p1 p2)
+  (and (= (position-x p1) (position-x p2))
+       (= (position-y p1) (position-y p2))))
 
 (define-record-type <snake>
   (make-snake head head-icon tails tail-icon direction)
@@ -53,12 +63,12 @@
   (make-food icon position)
   food?
   (icon food-icon)
-  (position food-position))
+  (position food-position set-food-position!))
 
 (define-record-type <world>
   (make-world state food snake score)
   world?
-  (state world-state set-world-state!) ; play, win, lose
+  (state world-state set-world-state!) ; play, lose
   (food world-food)
   (snake world-snake)
   (score world-score))
@@ -85,8 +95,8 @@
 (define line-count    25)
 (define grid-count    (- line-count 1))
 (define grid-size     (/ game-size line-count))
-(define snake-velocity 2)
-(define hz             60.0) ; aim for updating at 60Hz
+; (define snake-velocity 2)
+(define hz             4.0)
 
 (define (move- n s)
   (if (< n s) grid-count (- n s)))
@@ -120,13 +130,27 @@
    ; (move-node! direction head (/ hz snake-velocity))
    (move-node! direction head 1)))
 
+(define (spawn-food! snake)
+  (let* ([pos-x (round (* (random) grid-count))]
+         [pos-y (round (* (random) grid-count))]
+         [pos (make-position pos-x pos-y)])
+    (if (any1 (λ (p) (position= p pos))
+              (cons (snake-head snake) (car (snake-tails snake))))
+      (spawn-food! snake)
+      pos)))
+
+(define (eat-and-spawn-food! snake food)
+  (when (position= (snake-head snake) (food-position food))
+    (set-food-position! food (spawn-food! snake))))
 
 (define dt (/ 1000.0 hz))
 (define (update)
   (match (world-state *world*)
     ['play
-     (let ([snake (world-snake *world*)])
-       (move-snake! snake))]
+     (let ([snake (world-snake *world*)]
+           [food (world-food *world*)])
+       (move-snake! snake)
+       (eat-and-spawn-food! snake food))]
     [_ #t])
   (timeout update-callback dt))
 (define update-callback (procedure->external update))
