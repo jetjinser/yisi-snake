@@ -213,11 +213,11 @@
 (define draw-callback (procedure->external draw))
 
 ;; Input
-(define key:up "ArrowUp")
-(define key:down "ArrowDown")
-(define key:left "ArrowLeft")
-(define key:right "ArrowRight")
-(define key:confirm "Enter")
+(define (key:up? key) (any1 (λ (k) (string=? k key)) (list "ArrowUp" "KeyK" "KeyW")))
+(define (key:down? key) (any1 (λ (k) (string=? k key)) (list "ArrowDown" "KeyJ" "KeyS")))
+(define (key:left? key) (any1 (λ (k) (string=? k key)) (list "ArrowLeft" "KeyH" "KeyA")))
+(define (key:right? key) (any1 (λ (k) (string=? k key)) (list "ArrowRight" "KeyL" "KeyD")))
+(define (key:confirm? key) (any1 (λ (k) (string=? k key)) (list "Enter" " ")))
 
 (define (opposite-direction direction)
   (match direction
@@ -237,16 +237,16 @@
     (match (world-state *world*)
       ['play
        (cond
-         [(string=? key key:up)
+         [(key:up? key)
           (set-snake-direction-checked! snake 'up)]
-         [(string=? key key:down)
+         [(key:down? key)
           (set-snake-direction-checked! snake 'down)]
-         [(string=? key key:left)
+         [(key:left? key)
           (set-snake-direction-checked! snake 'left)]
-         [(string=? key key:right)
+         [(key:right? key)
           (set-snake-direction-checked! snake 'right)])]
       [(or 'ready)
-       (when (string=? key key:confirm)
+       (when (key:confirm? key)
          (set! *world* (make-world-1)))])))
 
 (define (on-key-up event) #t)
