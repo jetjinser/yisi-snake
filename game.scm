@@ -19,9 +19,10 @@
 ;;; Code:
 
 ;; TODO: 
-;; - lose
+;; - lose (collision)
 ;; - score
-;; - grow
+;; - keyborad sequence
+;; - audio
 
 (use-modules (dom canvas)
              (dom document)
@@ -51,13 +52,17 @@
        (= (position-y p1) (position-y p2))))
 
 (define-record-type <snake>
-  (make-snake head head-icon tails tail-icon direction)
+  (make-snake head head-icon tails tail-icon direction growth-potential)
   snake?
   (head snake-head set-snake-head!)
   (head-icon snake-head-icon)
   (tails snake-tails set-snake-tails!)
   (tail-icon snake-tail-icon)
-  (direction snake-direction set-snake-direction!)) ; up down left right
+  (direction snake-direction set-snake-direction!) ; up down left right
+  (growth-potential snake-growth-potential set-snake-growth-potential!))
+
+(define (snake-from-head snake)
+  (cons (snake-head snake) (car (snake-tails snake))))
 
 (define-record-type <food>
   (make-food icon position)
@@ -68,7 +73,7 @@
 (define-record-type <world>
   (make-world state food snake score)
   world?
-  (state world-state set-world-state!) ; play, lose
+  (state world-state set-world-state!) ; play, ready
   (food world-food)
   (snake world-snake)
   (score world-score))
@@ -80,7 +85,8 @@
                           "🐍"
                           (make-q)
                           "🟢"
-                          'right)
+                          'right
+                          0)
               0))
 
 ;; Game state
@@ -124,10 +130,12 @@
 (define (move-snake! snake)
  (let* ([head (snake-head snake)]
         [tails (snake-tails snake)]
-        [direction (snake-direction snake)])
+        [direction (snake-direction snake)]
+        [growth-potential (snake-growth-potential snake)])
    (enq! tails (make-position (position-x head) (position-y head)))
-   (deq! tails)
-   ; (move-node! direction head (/ hz snake-velocity))
+   (if (zero? growth-potential)
+     (deq! tails)
+     (set-snake-growth-potential! snake (- growth-potential 1)))
    (move-node! direction head 1)))
 
 (define (spawn-food! snake)
@@ -135,13 +143,16 @@
          [pos-y (round (* (random) grid-count))]
          [pos (make-position pos-x pos-y)])
     (if (any1 (λ (p) (position= p pos))
-              (cons (snake-head snake) (car (snake-tails snake))))
+              (snake-from-head snake))
       (spawn-food! snake)
       pos)))
 
 (define (eat-and-spawn-food! snake food)
-  (when (position= (snake-head snake) (food-position food))
-    (set-food-position! food (spawn-food! snake))))
+  (and (position= (snake-head snake) (food-position food))
+       (set-food-position! food (spawn-food! snake))))
+
+(define (grow-snake! snake)
+  (set-snake-growth-potential! snake (+ (snake-growth-potential snake) 1)))
 
 (define dt (/ 1000.0 hz))
 (define (update)
@@ -150,7 +161,8 @@
      (let ([snake (world-snake *world*)]
            [food (world-food *world*)])
        (move-snake! snake)
-       (eat-and-spawn-food! snake food))]
+       (and (eat-and-spawn-food! snake food)
+            (grow-snake! snake)))]
     [_ #t])
   (timeout update-callback dt))
 (define update-callback (procedure->external update))
@@ -218,7 +230,7 @@
           (set-snake-direction-checked! snake 'left)]
          [(string=? key key:right)
           (set-snake-direction-checked! snake 'right)])]
-      [(or 'win 'lose)
+      [(or 'ready)
        (when (string=? key key:confirm)
          (set! *world* (make-world-1)))])))
 
