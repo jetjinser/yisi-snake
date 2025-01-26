@@ -206,7 +206,7 @@
     (match (world-state *world*)
       ['ready
        (set-fill-color! context "#ffffff")
-       (fill-text context "Crashed! Enter to play..."
+       (fill-text context "Crashed! Press Enter to continue..."
                    (/ game-size 2.0) (/ game-size 2.0))]
       [_ #t]))
   (request-animation-frame draw-callback))
