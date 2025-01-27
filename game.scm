@@ -21,6 +21,7 @@
 ;; TODO:
 ;; - 60Hz: decoupling snake volecity and refreshing rate
 ;; - audio
+;; - bug: multiple keyboard in 1 dz, need to refine keyboard sequence, or fix by 60Hz
 
 (use-modules (dom canvas)
              (dom document)
