@@ -19,7 +19,6 @@
 ;;; Code:
 
 ;; TODO:
-;; - keyborad sequence: done but leggy
 ;; - 60Hz: decoupling snake volecity and refreshing rate
 ;; - audio
 
@@ -273,7 +272,11 @@
        (when (key:confirm? key)
          (set! *world* (make-world-1)))])))
 
-(define (on-key-up event) #t)
+(define (on-key-up event)
+  (let* ([snake (world-snake *world*)]
+         [direction-seq (snake-direction-seq snake)])
+    (unless (q-empty? direction-seq)
+      (set-snake-direction! snake (deq! direction-seq)))))
 
 ;; Canvas and event loop setup
 (define canvas (get-element-by-id "canvas"))
