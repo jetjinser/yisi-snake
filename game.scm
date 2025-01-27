@@ -54,7 +54,7 @@
   (make-snake head head-icon tails tail-icon direction direction-seq growth-potential)
   snake?
   (head snake-head set-snake-head!)
-  (head-icon snake-head-icon)
+  (head-icon snake-head-icon set-snake-head-icon!)
   (tails snake-tails set-snake-tails!)
   (tail-icon snake-tail-icon)
   (direction snake-direction set-snake-direction!) ; up down left right
@@ -178,7 +178,9 @@
        (and (eat-and-spawn-food! snake food)
             (grow-snake! snake))
        (and (snake-collision snake)
-            (set-world-state! *world* 'ready))
+            (begin
+              (set-snake-head-icon! snake "💥💥")
+              (set-world-state! *world* 'ready)))
        (unless (q-empty? direction-seq)
          (set-snake-direction! snake (deq! direction-seq))))]
     [_ #t])
