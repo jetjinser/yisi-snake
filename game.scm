@@ -19,7 +19,6 @@
 ;;; Code:
 
 ;; TODO:
-;; - score
 ;; - keyborad sequence: done but leggy
 ;; - 60Hz: decoupling snake volecity and refreshing rate
 ;; - audio
@@ -77,7 +76,10 @@
   (state world-state set-world-state!) ; play, ready
   (food world-food)
   (snake world-snake)
-  (score world-score))
+  (score world-score set-world-score!))
+
+(define (world-score+! world)
+  (set-world-score! world (+ (world-score world) 1)))
 
 (define (make-world-1)
   (let ([world (make-world 'play
@@ -153,7 +155,9 @@
 
 (define (eat-and-spawn-food! snake food)
   (and (position= (snake-head snake) (food-position food))
-       (set-food-position! food (spawn-food snake))))
+       (begin
+         (world-score+! *world*)
+         (set-food-position! food (spawn-food snake)))))
 
 (define (grow-snake! snake)
   (set-snake-growth-potential! snake (+ (snake-growth-potential snake) 1)))
@@ -180,6 +184,15 @@
     [_ #t])
   (timeout update-callback dt))
 (define update-callback (procedure->external update))
+
+;; Rendering
+(define number->string*
+  (let ((cache (make-eq-hashtable))) ; assuming fixnums only
+    (lambda (x)
+      (or (hashtable-ref cache x)
+          (let ((str (number->string x)))
+            (hashtable-set! cache x str)
+            str)))))
 
 (define (draw prev-time)
   (set-fill-color! context "#222436")
@@ -209,9 +222,13 @@
                   (fill-text context tail-icon (position-x pos) (position-y pos))))
               (car tails))
     ;; draw message
+    (set-fill-color! context "#ffffff")
+    (set-text-baseline! context "top")
+    (let* ([score (world-score *world*)]
+           [msg (format #f "SCORE: ~a" (number->string* score))])
+      (fill-text context msg (/ game-size 2.0) 0))
     (match (world-state *world*)
       ['ready
-       (set-fill-color! context "#ffffff")
        (fill-text context "Crashed! Press Enter to continue..."
                    (/ game-size 2.0) (/ game-size 2.0))]
       [_ #t]))
