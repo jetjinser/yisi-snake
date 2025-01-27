@@ -23,16 +23,20 @@
             nodePackages.typescript-language-server
             vscode-langservers-extracted
             guile
-            (guile-hoot.overrideAttrs (_: {
-              src = ~/vie/dump/guile-hoot;
-            }))
+            guile-hoot
             gnumake
             zip
           ];
-          env = [{
-            name = "GUILE_LOAD_PATH";
-            prefix = "$DEVSHELL_DIR/${pkgs.guile.siteDir}";
-          }];
+          env = [
+            {
+              name = "GUILE_LOAD_PATH";
+              prefix = "$DEVSHELL_DIR/${pkgs.guile.siteDir}";
+            }
+            {
+              name = "HOOT_LOAD_PATH";
+              prefix = "$DEVSHELL_DIR/share/guile/3.0";
+            }
+          ];
         };
       };
 
