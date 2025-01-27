@@ -18,9 +18,10 @@
 ;;;
 ;;; Code:
 
-;; TODO: 
+;; TODO:
 ;; - score
-;; - keyborad sequence
+;; - keyborad sequence: done but leggy
+;; - 60Hz: decoupling snake volecity and refreshing rate
 ;; - audio
 
 (use-modules (dom canvas)
@@ -51,13 +52,14 @@
        (= (position-y p1) (position-y p2))))
 
 (define-record-type <snake>
-  (make-snake head head-icon tails tail-icon direction growth-potential)
+  (make-snake head head-icon tails tail-icon direction direction-seq growth-potential)
   snake?
   (head snake-head set-snake-head!)
   (head-icon snake-head-icon)
   (tails snake-tails set-snake-tails!)
   (tail-icon snake-tail-icon)
   (direction snake-direction set-snake-direction!) ; up down left right
+  (direction-seq snake-direction-seq)
   (growth-potential snake-growth-potential set-snake-growth-potential!))
 
 (define (snake-from-head snake)
@@ -85,6 +87,7 @@
                                        (make-q)
                                        "🟢"
                                        'left
+                                       (make-q)
                                        0)
                            0)])
     (for-each (λ (pos) (enq! (snake-tails (world-snake world)) pos))
@@ -164,13 +167,16 @@
 (define (update)
   (match (world-state *world*)
     ['play
-     (let ([snake (world-snake *world*)]
-           [food (world-food *world*)])
+     (let* ([snake (world-snake *world*)]
+            [food (world-food *world*)]
+            [direction-seq (snake-direction-seq snake)])
        (move-snake! snake)
        (and (eat-and-spawn-food! snake food)
             (grow-snake! snake))
        (and (snake-collision snake)
-            (set-world-state! *world* 'ready)))]
+            (set-world-state! *world* 'ready))
+       (unless (q-empty? direction-seq)
+         (set-snake-direction! snake (deq! direction-seq))))]
     [_ #t])
   (timeout update-callback dt))
 (define update-callback (procedure->external update))
@@ -226,10 +232,11 @@
     ['left 'right]
     ['right 'left]))
 
-(define (set-snake-direction-checked! snake direction)
-  (let ([curr-direction (snake-direction snake)])
+(define (enq-direction-seq-checked! snake direction)
+  (let ([curr-direction (snake-direction snake)]
+        [direction-seq (snake-direction-seq snake)])
     (or (eq? curr-direction (opposite-direction direction))
-        (set-snake-direction! snake direction))))
+        (enq! direction-seq direction))))
 
 (define (on-key-down event)
   (let ([key (keyboard-event-code event)]
@@ -238,13 +245,13 @@
       ['play
        (cond
          [(key:up? key)
-          (set-snake-direction-checked! snake 'up)]
+          (enq-direction-seq-checked! snake 'up)]
          [(key:down? key)
-          (set-snake-direction-checked! snake 'down)]
+          (enq-direction-seq-checked! snake 'down)]
          [(key:left? key)
-          (set-snake-direction-checked! snake 'left)]
+          (enq-direction-seq-checked! snake 'left)]
          [(key:right? key)
-          (set-snake-direction-checked! snake 'right)])]
+          (enq-direction-seq-checked! snake 'right)])]
       [(or 'ready)
        (when (key:confirm? key)
          (set! *world* (make-world-1)))])))
